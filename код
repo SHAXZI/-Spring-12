@@ -1,0 +1,102 @@
+import socket
+import threading
+
+# Singleton: Сервер должен существовать в единственном экземпляре
+class ChatServer:
+    _instance = None
+
+    def __new__(cls, host, port):
+        if cls._instance is None:
+            cls._instance = super(ChatServer, cls).__new__(cls)
+            cls._instance.host = host
+            cls._instance.port = port
+            cls._instance.clients = []
+        return cls._instance
+
+    def start(self):
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.bind((self.host, self.port))
+        self.server.listen()
+        print(f"Сервер запущен на {self.host}:{self.port}")
+
+        while True:
+            client, address = self.server.accept()
+            print(f"Подключен клиент: {address}")
+            self.clients.append(client)
+            thread = threading.Thread(target=self.handle_client, args=(client,))
+            thread.start()
+
+    def handle_client(self, client):
+        while True:
+            try:
+                message = client.recv(1024)
+                if message:
+                    print(f"Получено сообщение: {message.decode('utf-8')}")
+                    self.notify_clients(message, client)
+                else:
+                    break
+            except:
+                self.clients.remove(client)
+                client.close()
+                break
+
+    # Observer: Метод для уведомления всех клиентов
+    def notify_clients(self, message, sender_client):
+        for client in self.clients:
+            if client != sender_client:
+                try:
+                    client.send(message)
+                except:
+                    client.close()
+                    self.clients.remove(client)
+
+class ChatClient:
+    def __init__(self, host, port):
+        self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.client.connect((host, port))
+
+    def receive_messages(self):
+        while True:
+            try:
+                message = self.client.recv(1024).decode('utf-8')
+                if message:
+                    print(message)
+            except:
+                print("Соединение с сервером потеряно.")
+                self.client.close()
+                break
+
+    def send_messages(self):
+        while True:
+            message = input('')
+            self.client.send(message.encode('utf-8'))
+
+    def start(self):
+        receive_thread = threading.Thread(target=self.receive_messages)
+        receive_thread.start()
+
+        send_thread = threading.Thread(target=self.send_messages)
+        send_thread.start()
+
+# Factory Method: Создание серверных и клиентских объектов
+class ChatFactory:
+    @staticmethod
+    def create_chat(mode, host, port):
+        if mode == 'сервер':
+            return ChatServer(host, port)
+        elif mode == 'клиент':
+            return ChatClient(host, port)
+        else:
+            raise ValueError("Неверный режим. Пожалуйста, выберите либо 'сервер', либо 'клиент'.")
+
+if __name__ == "__main__":
+    mode = input("Выберите режим работы (сервер/клиент): ").strip().lower()
+
+    # Используем фабричный метод для создания нужного объекта
+    chat = ChatFactory.create_chat(mode, '127.0.0.1', 12345)
+
+    # Запускаем соответствующий режим работы
+    if isinstance(chat, ChatServer):
+        chat.start()
+    elif isinstance(chat, ChatClient):
+        chat.start()
